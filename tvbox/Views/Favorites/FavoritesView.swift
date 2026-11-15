@@ -12,7 +12,7 @@ struct FavoritesView: View {
     #if os(iOS)
     /// iOS 下卡片尺寸更紧凑，适配手机竖屏。
     private let columns = [
-        GridItem(.adaptive(minimum: 120, maximum: 160), spacing: 12)
+        GridItem(.adaptive(minimum: 128, maximum: 180), spacing: 12)
     ]
     #else
     /// macOS 下卡片适度放大，提升桌面端可读性。
