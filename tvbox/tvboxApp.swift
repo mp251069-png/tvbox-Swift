@@ -51,6 +51,8 @@ class AppState: ObservableObject {
     @Published var isConfigLoaded = false
     /// 当前首页选中的视频源 key（用于跨页面同步）。
     @Published var currentSourceKey: String = ""
+    /// iOS 主标签页索引，供首页快捷入口切换到对应标签。
+    @Published var selectedTabIndex: Int = 0
     /// 配置加载错误信息，供 UI 展示。
     @Published var configLoadError: String?
     /// 是否正在重试加载配置。
