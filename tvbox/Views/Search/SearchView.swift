@@ -8,7 +8,7 @@ struct SearchView: View {
     #if os(iOS)
     /// iOS 卡片网格参数。
     private let columns = [
-        GridItem(.adaptive(minimum: 120, maximum: 160), spacing: 12)
+        GridItem(.adaptive(minimum: 128, maximum: 180), spacing: 12)
     ]
     #else
     /// macOS 卡片网格参数。
