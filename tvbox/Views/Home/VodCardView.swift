@@ -69,13 +69,21 @@ struct VodCardView: View {
             // 标题
             VStack(alignment: .leading, spacing: 2) {
                 Text(video.name)
+                    #if os(iOS)
+                    .font(.system(size: 15, weight: .semibold))
+                    #else
                     .font(.system(size: 14, weight: .semibold))
+                    #endif
                     .foregroundColor(.white)
                     .lineLimit(1)
                 
                 if !video.type.isEmpty {
                     Text(video.type)
+                        #if os(iOS)
+                        .font(.system(size: 12))
+                        #else
                         .font(.system(size: 10))
+                        #endif
                         .foregroundColor(.white.opacity(0.5))
                 }
             }

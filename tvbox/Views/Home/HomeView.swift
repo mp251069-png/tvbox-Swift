@@ -9,7 +9,7 @@ struct HomeView: View {
     // 网格布局
     #if os(iOS)
     private let columns = [
-        GridItem(.adaptive(minimum: 100, maximum: 140), spacing: 10)
+        GridItem(.adaptive(minimum: 128, maximum: 180), spacing: 12)
     ]
     #else
     private let columns = [
@@ -77,7 +77,19 @@ struct HomeView: View {
             .menuStyle(.borderlessButton)
             .fixedSize()
             
-            Spacer()
+            Spacer(minLength: 8)
+            Button {
+                appState.selectedTabIndex = 2
+            } label: {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(.white)
+                    .frame(width: 40, height: 40)
+                    .background(Color.white.opacity(0.08))
+                    .clipShape(Circle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("搜索影片")
         }
         .padding(.horizontal, 16)
         .padding(.top, 10)
@@ -220,29 +232,47 @@ struct HomeView: View {
                     : viewModel.categoryVideos
                 
                 ScrollView {
-                    LazyVGrid(columns: columns, spacing: 16) {
-                        ForEach(videos) { video in
-                            NavigationLink(value: video) {
-                                VodCardView(video: video)
+                    VStack(alignment: .leading, spacing: 14) {
+                        #if os(iOS)
+                        if !videos.isEmpty {
+                            HStack(alignment: .firstTextBaseline) {
+                                Text(viewModel.selectedSort?.id == "home" ? "为你精选" : (viewModel.selectedSort?.name ?? "精选"))
+                                    .font(.system(size: 20, weight: .bold))
+                                    .foregroundColor(.white)
+                                Spacer()
+                                Text("\(videos.count) 部")
+                                    .font(.system(size: 12, weight: .medium))
+                                    .foregroundColor(.white.opacity(0.48))
                             }
-                            #if os(iOS)
-                            .buttonStyle(VodCardPressStyle())
-                            #else
-                            .buttonStyle(.plain)
-                            #endif
-                            .onAppear {
-                                Task { await viewModel.loadMoreIfNeeded(currentItem: video) }
+                            .padding(.horizontal, 4)
+                        }
+                        #endif
+
+                        LazyVGrid(columns: columns, spacing: 18) {
+                            ForEach(videos) { video in
+                                NavigationLink(value: video) {
+                                    VodCardView(video: video)
+                                }
+                                #if os(iOS)
+                                .buttonStyle(VodCardPressStyle())
+                                #else
+                                .buttonStyle(.plain)
+                                #endif
+                                .onAppear {
+                                    Task { await viewModel.loadMoreIfNeeded(currentItem: video) }
+                                }
                             }
                         }
+
+                        // 加载更多
+                        if viewModel.selectedSort?.id != "home" && viewModel.hasMore {
+                            ProgressView()
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 8)
+                        }
                     }
-                    .padding(.horizontal, 20)
+                    .padding(.horizontal, 16)
                     .padding(.vertical, 12)
-                    
-                    // 加载更多
-                    if viewModel.selectedSort?.id != "home" && viewModel.hasMore {
-                        ProgressView()
-                            .padding()
-                    }
                 }
                 .refreshable {
                     await viewModel.refresh()
@@ -254,4 +284,3 @@ struct HomeView: View {
         }
     }
 }
-
