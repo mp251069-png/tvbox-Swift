@@ -78,7 +78,7 @@ struct ContentView: View {
     /// 主体导航容器：iOS 使用 TabView，macOS 使用 NavigationSplitView。
     private var mainTabView: some View {
         #if os(iOS)
-        TabView(selection: $selectedTab) {
+        TabView(selection: $appState.selectedTabIndex) {
             HomeView()
                 .tabItem {
                     Label("首页", systemImage: "house.fill")
@@ -86,7 +86,7 @@ struct ContentView: View {
                 .tag(0)
             
             LiveView(onExit: {
-                selectedTab = 0
+                appState.selectedTabIndex = 0
             })
                 .tabItem {
                     Label("直播", systemImage: "tv.fill")
@@ -106,7 +106,7 @@ struct ContentView: View {
                 .tag(3)
         }
         .tint(.orange)
-        .onChange(of: selectedTab) { _, _ in
+        .onChange(of: appState.selectedTabIndex) { _, _ in
             HapticManager.shared.selection()
         }
         #else
