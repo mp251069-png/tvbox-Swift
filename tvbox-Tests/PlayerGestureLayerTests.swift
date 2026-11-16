@@ -187,7 +187,8 @@ struct TVBoxSourceCompatibilityTests {
         }
         """#
 
-        let detail = try #require(service.parseDetail(response, sourceKey: "json-source", type: 1))
+        let parsed = try service.parseDetail(response, sourceKey: "json-source", type: 1)
+        let detail = try #require(parsed)
         #expect(detail.playFlags == ["HLS", "Backup"])
         #expect(detail.currentEpisode?.name == "Episode 1")
         #expect(detail.currentEpisode?.url == "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8")
@@ -200,7 +201,8 @@ struct TVBoxSourceCompatibilityTests {
     func remoteDetailBuildsPlayableEpisodeList() throws {
         let response = #"{"list":[{"vod_id":"r-9","vod_name":"Remote","vod_play_from":"线路A","vod_play_url":"正片$https://media.example/live.m3u8"}]}"#
 
-        let detail = try #require(service.parseDetail(response, sourceKey: "remote-source", type: 4))
+        let parsed = try service.parseDetail(response, sourceKey: "remote-source", type: 4)
+        let detail = try #require(parsed)
         #expect(detail.id == "r-9")
         #expect(detail.currentEpisode?.url == "https://media.example/live.m3u8")
     }
@@ -231,7 +233,8 @@ struct TVBoxSourceCompatibilityTests {
         </video></list></rss>
         """#
 
-        let detail = try #require(service.parseDetail(response, sourceKey: "xml", type: 0))
+        let parsed = try service.parseDetail(response, sourceKey: "xml", type: 0)
+        let detail = try #require(parsed)
         #expect(detail.playFlags == ["hls"])
         #expect(detail.currentEpisode?.url == "https://media.example/episode.m3u8")
     }
@@ -317,7 +320,13 @@ struct TVBoxSourceCompatibilityTests {
     @Test("[PlaybackSmoke] Big Buck Bunny HLS reaches a three-second AVPlayer timeline")
     @MainActor
     func playbackSmokeBigBuckBunnyHLS() async throws {
-        let url = try #require(URL(string: "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8"))
+        let response = #"{"list":[{"vod_id":"bbb","vod_name":"Big Buck Bunny","vod_play_from":"HLS","vod_play_url":"Sample$https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8"}]}"#
+        let parsed = try service.parseDetail(response, sourceKey: "smoke", type: 1)
+        let detail = try #require(parsed)
+        let episode = try #require(detail.currentEpisode)
+        let source = SourceBean(key: "smoke", name: "Public HLS smoke", api: "https://test-streams.mux.dev", type: 1)
+        let resolved = try await service.resolvePlayback(sourceBean: source, flag: detail.playFlag, id: episode.url)
+        let url = try #require(URL(string: resolved))
         let item = AVPlayerItem(url: url)
         let player = AVPlayer(playerItem: item)
         player.isMuted = true
