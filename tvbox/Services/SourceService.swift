@@ -97,7 +97,7 @@ class SourceService {
         return (sorts, homeVideos)
     }
     
-    private func parseSort(_ jsonStr: String, sourceBean: SourceBean) throws -> (sorts: [MovieSort.SortData], homeVideos: [Movie.Video]) {
+    func parseSort(_ jsonStr: String, sourceBean: SourceBean) throws -> (sorts: [MovieSort.SortData], homeVideos: [Movie.Video]) {
         guard let data = jsonStr.data(using: .utf8) else {
             throw SourceError.parseError("无法解析数据")
         }
@@ -108,6 +108,7 @@ class SourceService {
         if sourceBean.type == 0 {
             // XML 格式
             sorts = parseXMLCategories(from: jsonStr)
+            homeVideos = parseXMLVideoList(from: jsonStr, sourceKey: sourceBean.key)
         } else {
             // JSON 格式 (type=1, type=4)
             if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
@@ -143,16 +144,15 @@ class SourceService {
     }
     
     private func parseXMLCategories(from xml: String) -> [MovieSort.SortData] {
-        // 简化的 XML 分类解析
         var sorts: [MovieSort.SortData] = []
-        let pattern = "<ty id=\"(\\d+)\"[^>]*>([^<]+)</ty>"
-        if let regex = try? NSRegularExpression(pattern: pattern) {
+        let pattern = #"<ty\b[^>]*\bid\s*=\s*[\"']([^\"']+)[\"'][^>]*>([\s\S]*?)</ty>"#
+        if let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) {
             let matches = regex.matches(in: xml, range: NSRange(xml.startIndex..., in: xml))
             for match in matches {
                 if let idRange = Range(match.range(at: 1), in: xml),
                    let nameRange = Range(match.range(at: 2), in: xml) {
                     let id = String(xml[idRange])
-                    let name = String(xml[nameRange])
+                    let name = decodeXMLText(String(xml[nameRange]))
                     sorts.append(MovieSort.SortData(id: id, name: name))
                 }
             }
@@ -230,7 +230,7 @@ class SourceService {
         return try parseVideoList(jsonStr, sourceKey: sourceBean.key, type: sourceBean.type)
     }
     
-    private func parseVideoList(_ jsonStr: String, sourceKey: String, type: Int) throws -> [Movie.Video] {
+    func parseVideoList(_ jsonStr: String, sourceKey: String, type: Int) throws -> [Movie.Video] {
         guard let data = jsonStr.data(using: .utf8) else {
             throw SourceError.parseError("无法解析数据")
         }
@@ -258,17 +258,26 @@ class SourceService {
     }
     
     private func parseXMLVideoList(from xml: String, sourceKey: String) -> [Movie.Video] {
-        // 简化 XML 视频列表解析
         var videos: [Movie.Video] = []
-        let pattern = "<video>.*?<id>(\\d+)</id>.*?<name><!\\[CDATA\\[(.+?)\\]\\]></name>.*?<pic>(.*?)</pic>.*?<note><!\\[CDATA\\[(.*?)\\]\\]></note>.*?</video>"
-        if let regex = try? NSRegularExpression(pattern: pattern, options: .dotMatchesLineSeparators) {
+        let pattern = #"<video\b[^>]*>[\s\S]*?</video>"#
+        if let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) {
             let matches = regex.matches(in: xml, range: NSRange(xml.startIndex..., in: xml))
             for match in matches {
-                var video = Movie.Video()
-                if let r = Range(match.range(at: 1), in: xml) { video.id = String(xml[r]) }
-                if let r = Range(match.range(at: 2), in: xml) { video.name = String(xml[r]) }
-                if let r = Range(match.range(at: 3), in: xml) { video.pic = String(xml[r]) }
-                if let r = Range(match.range(at: 4), in: xml) { video.note = String(xml[r]) }
+                guard let blockRange = Range(match.range, in: xml) else { continue }
+                let block = String(xml[blockRange])
+                let id = extractXMLTag("id", in: block)
+                guard !id.isEmpty else { continue }
+
+                var video = Movie.Video(id: id)
+                video.name = extractXMLTag("name", in: block)
+                video.pic = extractXMLTag("pic", in: block)
+                video.note = extractXMLTag("note", in: block)
+                video.year = extractXMLTag("year", in: block)
+                video.area = extractXMLTag("area", in: block)
+                video.type = extractXMLTag("type", in: block)
+                video.director = extractXMLTag("director", in: block)
+                video.actor = extractXMLTag("actor", in: block)
+                video.des = extractXMLTag("des", in: block)
                 video.sourceKey = sourceKey
                 videos.append(video)
             }
@@ -324,7 +333,7 @@ class SourceService {
         return try parseDetail(jsonStr, sourceKey: sourceBean.key, type: sourceBean.type)
     }
     
-    private func parseDetail(_ jsonStr: String, sourceKey: String, type: Int) throws -> VodInfo? {
+    func parseDetail(_ jsonStr: String, sourceKey: String, type: Int) throws -> VodInfo? {
         if type == 0 {
             return parseXMLDetail(jsonStr, sourceKey: sourceKey)
         }
@@ -485,6 +494,79 @@ class SourceService {
         }
     }
 
+    // MARK: - 播放地址解析
+
+    struct PlaybackResolution: Sendable {
+        let url: String
+    }
+
+    /// type=0/1 的剧集值是直链；type=4 通过 playerContent 风格接口将标识解析为直链。
+    func getPlayer(sourceBean: SourceBean, flag: String, id: String) async throws -> PlaybackResolution {
+        let rawID = id.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !rawID.isEmpty else { throw SourceError.playbackError("播放地址为空") }
+        switch sourceBean.type {
+        case 0, 1:
+            return try validatedPlaybackURL(rawID)
+        case 4:
+            guard sourceBean.isHttpApi else { throw SourceError.invalidApiUrl(sourceBean.api) }
+            var queryItems = [URLQueryItem(name: "play", value: rawID), URLQueryItem(name: "flag", value: flag)]
+            if let ext = sourceBean.ext, !ext.isEmpty {
+                let extend = await resolveExtend(ext)
+                if !extend.isEmpty { queryItems.append(URLQueryItem(name: "extend", value: extend)) }
+            }
+            let url = try buildURL(base: sourceBean.api, queryItems: queryItems)
+            let response = try await network.getString(from: url)
+            return try resolvePlaybackResponse(response)
+        default:
+            throw SourceError.unsupportedType(sourceBean.typeDescription)
+        }
+    }
+
+    func resolvePlayback(sourceBean: SourceBean, flag: String, id: String) async throws -> String {
+        let resolution = try await getPlayer(sourceBean: sourceBean, flag: flag, id: id)
+        return resolution.url
+    }
+
+    func resolvePlaybackResponse(_ response: String) throws -> PlaybackResolution {
+        guard let data = response.trimmingCharacters(in: .whitespacesAndNewlines).data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: data),
+              let json = object as? [String: Any] else {
+            throw SourceError.playbackError("type4 返回不是 JSON playerContent")
+        }
+        if playbackFlag(json["parse"]) || playbackFlag(json["jx"]) {
+            throw SourceError.playbackError("该线路要求 parse/jx 解析器，当前客户端拒绝执行")
+        }
+        if let header = json["header"], !isEmptyHeader(header) {
+            throw SourceError.playbackError("播放地址带 header，但当前播放器无法安全传递请求头")
+        }
+        let nested = json["data"] as? [String: Any]
+        guard let url = (json["url"] as? String) ?? (nested?["url"] as? String) else {
+            throw SourceError.playbackError("playerContent 未返回 url")
+        }
+        return try validatedPlaybackURL(url)
+    }
+
+    private func playbackFlag(_ value: Any?) -> Bool {
+        if let number = value as? NSNumber { return number.intValue != 0 }
+        if let string = value as? String { return ["1", "true", "yes"].contains(string.lowercased()) }
+        return false
+    }
+
+    private func isEmptyHeader(_ value: Any) -> Bool {
+        if let string = value as? String { return string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        if let dictionary = value as? [String: Any] { return dictionary.isEmpty }
+        return false
+    }
+
+    private func validatedPlaybackURL(_ raw: String) throws -> PlaybackResolution {
+        let value = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let url = URL(string: value), let scheme = url.scheme?.lowercased(),
+              (scheme == "http" || scheme == "https"), url.host != nil else {
+            throw SourceError.playbackError("解析结果不是可直接播放的 HTTP(S) URL")
+        }
+        return PlaybackResolution(url: url.absoluteString)
+    }
+
     private func parseXMLDetail(_ xml: String, sourceKey: String) -> VodInfo? {
         guard let videoBlock = firstMatch(
             pattern: #"<video[\s\S]*?</video>"#,
@@ -583,22 +665,47 @@ class SourceService {
             value.removeFirst(9)
             value.removeLast(3)
         }
-        value = value.replacingOccurrences(of: "&amp;", with: "&")
         value = value.replacingOccurrences(of: "&lt;", with: "<")
         value = value.replacingOccurrences(of: "&gt;", with: ">")
         value = value.replacingOccurrences(of: "&quot;", with: "\"")
         value = value.replacingOccurrences(of: "&#39;", with: "'")
+        value = value.replacingOccurrences(of: "&apos;", with: "'")
+
+        let numericEntityPattern = #"&#(x[0-9a-fA-F]+|[0-9]+);"#
+        if let regex = try? NSRegularExpression(pattern: numericEntityPattern) {
+            let matches = regex.matches(in: value, range: NSRange(value.startIndex..., in: value))
+            for match in matches.reversed() {
+                guard let entityRange = Range(match.range, in: value),
+                      let numberRange = Range(match.range(at: 1), in: value) else { continue }
+                let number = String(value[numberRange])
+                let scalarValue: UInt32?
+                if number.hasPrefix("x") || number.hasPrefix("X") {
+                    scalarValue = UInt32(number.dropFirst(), radix: 16)
+                } else {
+                    scalarValue = UInt32(number, radix: 10)
+                }
+                if let scalarValue, let scalar = UnicodeScalar(scalarValue) {
+                    value.replaceSubrange(entityRange, with: String(scalar))
+                }
+            }
+        }
+
+        // Decode ampersands last so an encoded literal such as &amp;lt; is not decoded twice.
+        value = value.replacingOccurrences(of: "&amp;", with: "&")
         return value.trimmingCharacters(in: .whitespacesAndNewlines)
     }
     
-    private func buildURL(base: String, queryItems: [URLQueryItem]) throws -> String {
+    func buildURL(base: String, queryItems: [URLQueryItem]) throws -> String {
         let trimmedBase = base.trimmingCharacters(in: .whitespacesAndNewlines)
         guard var components = URLComponents(string: trimmedBase) else {
             throw SourceError.invalidApiUrl(base)
         }
         
         var mergedQueryItems = components.queryItems ?? []
-        mergedQueryItems.append(contentsOf: queryItems)
+        for item in queryItems {
+            mergedQueryItems.removeAll { $0.name == item.name }
+            mergedQueryItems.append(item)
+        }
         components.queryItems = mergedQueryItems
         
         guard let url = components.url else {
@@ -613,6 +720,7 @@ enum SourceError: LocalizedError {
     case parseError(String)
     case unsupportedType(String)
     case invalidApiUrl(String)
+    case playbackError(String)
     
     var errorDescription: String? {
         switch self {
@@ -620,6 +728,7 @@ enum SourceError: LocalizedError {
         case .parseError(let msg): return "数据解析错误: \(msg)"
         case .unsupportedType(let type): return "暂不支持 \(type) 类型的数据源，请切换其他源"
         case .invalidApiUrl(let url): return "无效的接口地址: \(url)"
+        case .playbackError(let msg): return "播放解析失败: \(msg)"
         }
     }
 }
