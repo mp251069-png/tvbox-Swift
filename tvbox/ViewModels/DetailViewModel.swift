@@ -57,11 +57,19 @@ class DetailViewModel: ObservableObject {
     private var qualityResolveTask: Task<Void, Never>?
     /// 解析令牌，防止异步结果回写到过期状态。
     private var qualityResolveToken = UUID()
+    /// 播放地址解析任务，快速切换线路/剧集时取消旧请求。
+    private var playbackResolveTask: Task<Void, Never>?
+    private var playbackResolveToken = UUID()
     
     /// 加载视频详情
     func loadDetail(video: Movie.Video) async {
         guard let source = ApiConfig.shared.getSource(key: video.sourceKey)
                 ?? ApiConfig.shared.homeSourceBean else { return }
+
+        playbackResolveTask?.cancel()
+        playbackResolveToken = UUID()
+        isPlaying = false
+        playUrl = nil
         
         isLoading = true
         errorMessage = nil
@@ -73,11 +81,9 @@ class DetailViewModel: ObservableObject {
                 self.selectedEpisodeIndex = info.playIndex
                 self.resumeSeconds = 0
                 self.realtimeProgressSeconds = 0
-                if let episode = info.currentEpisode {
-                    updateQualityOptions(for: episode.url, resetSelection: true)
-                } else {
-                    resetQualityState()
-                }
+                resetQualityState()
+                playbackResolveTask?.cancel()
+                playbackResolveTask = nil
             }
         } catch {
             errorMessage = error.localizedDescription
@@ -98,6 +104,10 @@ class DetailViewModel: ObservableObject {
         
         let episodes = vodInfo?.playUrlMap[flag] ?? []
         guard !episodes.isEmpty else {
+            playbackResolveTask?.cancel()
+            playbackResolveToken = UUID()
+            isPlaying = false
+            playUrl = nil
             selectedEpisodeIndex = 0
             vodInfo?.playIndex = 0
             resetQualityState()
@@ -108,12 +118,7 @@ class DetailViewModel: ObservableObject {
         selectedEpisodeIndex = targetIndex
         vodInfo?.playIndex = targetIndex
         let episodeURL = episodes[targetIndex].url
-        updateQualityOptions(for: episodeURL, resetSelection: true)
-        
-        // 播放中切线路时，立即切换到新线路对应剧集
-        if isPlaying {
-            playUrl = selectedPlayableURL(fallback: episodeURL)
-        }
+        beginPlaybackResolution(episodeURL: episodeURL, flag: flag)
     }
     
     /// 选择剧集并播放
@@ -125,11 +130,7 @@ class DetailViewModel: ObservableObject {
         realtimeProgressSeconds = 0
         
         if let episode = vodInfo?.currentEpisode {
-            // 仅当剧集 URL 变化时重置清晰度选择。
-            let shouldResetQuality = qualityBaseEpisodeURL != episode.url
-            updateQualityOptions(for: episode.url, resetSelection: shouldResetQuality)
-            playUrl = selectedPlayableURL(fallback: episode.url)
-            isPlaying = true
+            beginPlaybackResolution(episodeURL: episode.url, flag: selectedFlag)
         }
     }
     
@@ -154,11 +155,49 @@ class DetailViewModel: ObservableObject {
         resumeSeconds = progress
         realtimeProgressSeconds = progress
         let episodeURL = episodes[targetIndex].url
-        updateQualityOptions(for: episodeURL, resetSelection: true)
-        playUrl = selectedPlayableURL(fallback: episodeURL)
-        isPlaying = true
+        beginPlaybackResolution(episodeURL: episodeURL, flag: targetFlag, resume: progress)
     }
     
+    private func beginPlaybackResolution(episodeURL: String, flag: String, resume: Double = 0) {
+        playbackResolveTask?.cancel()
+        let token = UUID()
+        playbackResolveToken = token
+        isPlaying = false
+        playUrl = nil
+        errorMessage = nil
+        resetQualityState()
+
+        guard let info = vodInfo,
+              let source = ApiConfig.shared.getSource(key: info.sourceKey)
+                ?? ApiConfig.shared.homeSourceBean else {
+            errorMessage = "播放解析失败: 找不到视频源配置"
+            return
+        }
+
+        playbackResolveTask = Task { [weak self] in
+            do {
+                let resolvedURL = try await SourceService.shared.resolvePlayback(
+                    sourceBean: source, flag: flag, id: episodeURL
+                )
+                try Task.checkCancellation()
+                guard let self, self.playbackResolveToken == token else { return }
+                self.resumeSeconds = resume
+                self.realtimeProgressSeconds = resume
+                self.qualityBaseEpisodeURL = resolvedURL
+                self.updateQualityOptions(for: resolvedURL, resetSelection: true)
+                self.playUrl = self.selectedPlayableURL(fallback: resolvedURL)
+                self.isPlaying = true
+            } catch is CancellationError {
+                return
+            } catch {
+                guard let self, self.playbackResolveToken == token else { return }
+                self.playUrl = nil
+                self.isPlaying = false
+                self.errorMessage = error.localizedDescription
+            }
+        }
+    }
+
     /// 选择清晰度
     func selectQuality(_ option: PlaybackQualityOption) {
         guard qualityOptions.contains(option) else { return }
