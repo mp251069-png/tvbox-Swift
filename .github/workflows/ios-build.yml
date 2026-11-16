@@ -60,19 +60,23 @@ jobs:
           CODE_SIGNING_ALLOWED=NO
           build
 
-      - name: Package app artifact
+      - name: Package unsigned IPA
         if: ${{ !cancelled() && steps.release.outcome == 'success' }}
         run: |
           APP_PATH="$RUNNER_TEMP/DerivedData/Build/Products/Release-iphoneos/TVBox.app"
           test -d "$APP_PATH"
-          ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "$RUNNER_TEMP/TVBox-iOS-unsigned.zip"
+          PACKAGE_ROOT="$RUNNER_TEMP/TVBoxIPA"
+          mkdir -p "$PACKAGE_ROOT/Payload"
+          ditto "$APP_PATH" "$PACKAGE_ROOT/Payload/TVBox.app"
+          ditto -c -k --sequesterRsrc --keepParent "$PACKAGE_ROOT/Payload" "$RUNNER_TEMP/TVBox-iOS-unsigned.ipa"
+          test -f "$RUNNER_TEMP/TVBox-iOS-unsigned.ipa"
 
       - name: Upload iOS app artifact
         if: ${{ !cancelled() && steps.release.outcome == 'success' }}
         uses: actions/upload-artifact@v4
         with:
           name: TVBox-iOS-${{ github.sha }}
-          path: ${{ runner.temp }}/TVBox-iOS-unsigned.zip
+          path: ${{ runner.temp }}/TVBox-iOS-unsigned.ipa
           if-no-files-found: error
           retention-days: 14
 
