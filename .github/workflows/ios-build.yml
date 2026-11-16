@@ -29,8 +29,10 @@ jobs:
         run: xcodebuild -resolvePackageDependencies -project tvbox.xcodeproj -scheme tvbox
 
       - name: Run iOS source compatibility tests
+        shell: bash
         run: |
-          SIMULATOR_ID="$(xcrun simctl list devices available | awk -F '[()]' '/iPhone/ {print $2; exit}')"
+          set -euo pipefail
+          SIMULATOR_ID="$(xcrun simctl list devices available -j | python3 -c 'import json,sys; devices=json.load(sys.stdin)["devices"]; print(next((d["udid"] for group in devices.values() for d in group if "iPhone" in d["name"]), ""))')"
           if [ -z "$SIMULATOR_ID" ]; then
             echo "No available iPhone simulator was found."
             exit 1
@@ -45,6 +47,7 @@ jobs:
             CODE_SIGNING_ALLOWED=NO | tee "$RUNNER_TEMP/source-tests.log"
 
       - name: Build iOS Release app (unsigned)
+        id: release
         if: ${{ !cancelled() }}
         run: >-
           xcodebuild
@@ -58,12 +61,14 @@ jobs:
           build
 
       - name: Package app artifact
+        if: ${{ !cancelled() && steps.release.outcome == 'success' }}
         run: |
           APP_PATH="$RUNNER_TEMP/DerivedData/Build/Products/Release-iphoneos/TVBox.app"
           test -d "$APP_PATH"
           ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "$RUNNER_TEMP/TVBox-iOS-unsigned.zip"
 
       - name: Upload iOS app artifact
+        if: ${{ !cancelled() && steps.release.outcome == 'success' }}
         uses: actions/upload-artifact@v4
         with:
           name: TVBox-iOS-${{ github.sha }}
