@@ -28,7 +28,24 @@ jobs:
       - name: Resolve Swift packages
         run: xcodebuild -resolvePackageDependencies -project tvbox.xcodeproj -scheme tvbox
 
+      - name: Run iOS source compatibility tests
+        run: |
+          SIMULATOR_ID="$(xcrun simctl list devices available | awk -F '[()]' '/iPhone/ {print $2; exit}')"
+          if [ -z "$SIMULATOR_ID" ]; then
+            echo "No available iPhone simulator was found."
+            exit 1
+          fi
+          xcodebuild test \
+            -project tvbox.xcodeproj \
+            -scheme tvbox-Tests \
+            -destination "platform=iOS Simulator,id=$SIMULATOR_ID" \
+            -derivedDataPath "$RUNNER_TEMP/TestDerivedData" \
+            -resultBundlePath "$RUNNER_TEMP/SourceTests.xcresult" \
+            -parallel-testing-enabled NO \
+            CODE_SIGNING_ALLOWED=NO | tee "$RUNNER_TEMP/source-tests.log"
+
       - name: Build iOS Release app (unsigned)
+        if: ${{ !cancelled() }}
         run: >-
           xcodebuild
           -project tvbox.xcodeproj
@@ -52,4 +69,15 @@ jobs:
           name: TVBox-iOS-${{ github.sha }}
           path: ${{ runner.temp }}/TVBox-iOS-unsigned.zip
           if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload source test evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: TVBox-source-tests-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/SourceTests.xcresult
+            ${{ runner.temp }}/source-tests.log
+          if-no-files-found: warn
           retention-days: 14
