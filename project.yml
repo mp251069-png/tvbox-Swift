@@ -28,8 +28,8 @@ targets:
       - path: tvbox
         excludes:
           - Info.plist
-    resources:
       - path: ThirdPartyNotices/HGhubX-LICENSE.txt
+        buildPhase: resources
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: xyz.appinstall.nov.carbon.lam
@@ -106,8 +106,8 @@ targets:
       - path: tvbox
         excludes:
           - Info.plist
-    resources:
       - path: ThirdPartyNotices/HGhubX-LICENSE.txt
+        buildPhase: resources
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.tvbox.app.macos
