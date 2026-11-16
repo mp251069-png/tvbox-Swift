@@ -301,7 +301,7 @@ struct TVBoxSourceCompatibilityTests {
         let info = VodInfo.from(
             video: video,
             playFrom: "A$$$$$$A",
-            playUrl: "首集$https://media.example/$token.m3u8?x=$v#空URL$"
+            playUrl: "首集$https://media.example/$token.m3u8?x=$v#空URL$#"
                 + "$$$空集名$https://media.example/second.m3u8"
                 + "$$$重复$https://media.example/third.m3u8"
         )
