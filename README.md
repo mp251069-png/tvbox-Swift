@@ -25,6 +25,10 @@
   - **持久化:** 基于苹果全新 `SwiftData` 技术的现代化缓存与本地数据存储模块。
   - **数据层:** 兼容性极强的网络接口解析引擎，支持非标准的 JSON/XML 接口容错处理与数据清洗。
 
+- **HGhubX 短剧入口:** 原生短剧浏览、搜索、详情、选集与 AVPlayer/VLC 播放；可独立于 TVBox 源配置使用。
+  - 内容来自第三方上游，部分简介可能涉及成人或敏感题材；不包含登录互动、批量抓取或下载。
+  - 短剧兼容层遵循 HGhubX 的 PolyForm Noncommercial 许可，完整文本与 Required Notice 见 [`ThirdPartyNotices.md`](./ThirdPartyNotices.md)。
+
 ## 🛠 技术栈
 
 * **语言**: Swift 5.9
@@ -158,7 +162,7 @@ chmod +x package_mac.sh
 
 ## 📜 开源协议
 
-本项目采用 [MIT License](./LICENSE) 开源发布。
+TVBox 原有部分采用 [MIT License](./LICENSE)。HGhubX 短剧兼容部分另受 PolyForm Noncommercial License 1.0.0 约束，详见 [`ThirdPartyNotices.md`](./ThirdPartyNotices.md) 和 `ThirdPartyNotices/HGhubX-LICENSE.txt`。
 
 ---
 

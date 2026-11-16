@@ -104,6 +104,12 @@ struct ContentView: View {
                     Label("个人中心", systemImage: "person.fill")
                 }
                 .tag(3)
+
+            ShortDramaView()
+                .tabItem {
+                    Label("短剧", systemImage: "play.rectangle.on.rectangle.fill")
+                }
+                .tag(4)
         }
         .tint(.orange)
         .onChange(of: appState.selectedTabIndex) { _, _ in
@@ -114,6 +120,8 @@ struct ContentView: View {
             List(selection: $selectedTab) {
                 Label("首页", systemImage: "house.fill")
                     .tag(0)
+                Label("短剧", systemImage: "play.rectangle.on.rectangle.fill")
+                    .tag(6)
                 Label("直播", systemImage: "tv.fill")
                     .tag(1)
                 Label("搜索", systemImage: "magnifyingglass")
@@ -130,6 +138,7 @@ struct ContentView: View {
         } detail: {
             switch selectedTab {
             case 0: HomeView()
+            case 6: ShortDramaView()
             case 1: LiveView()
             case 2: SearchView()
             case 3:
@@ -304,6 +313,22 @@ struct ContentView: View {
                             settingsVM.isLoadingConfig
                             || settingsVM.vodApiUrl.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                         )
+
+                        Button {
+                            appState.isConfigLoaded = true
+                            #if os(iOS)
+                            appState.selectedTabIndex = 4
+                            #else
+                            selectedTab = 6
+                            #endif
+                        } label: {
+                            Text("暂不配置 TVBox 源，先浏览短剧")
+                                .font(.subheadline.weight(.medium))
+                                .foregroundColor(.white.opacity(0.78))
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 10)
+                        }
+                        .buttonStyle(.plain)
                         
                         // 历史记录
                         if !settingsVM.apiHistory.isEmpty {
