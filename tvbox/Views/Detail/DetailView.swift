@@ -47,6 +47,15 @@ struct DetailView: View {
                         }
                 }
                 
+                if let error = viewModel.errorMessage {
+                    Label(error, systemImage: "exclamationmark.triangle")
+                        .font(.callout)
+                        .foregroundStyle(.orange)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 20)
+                        .padding(.top, 16)
+                }
+
                 // 视频信息
                 videoInfoSection
                     .padding(.horizontal, 20)
