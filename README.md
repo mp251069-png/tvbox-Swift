@@ -40,13 +40,16 @@
 
 1. **源类型支持范围不同**
    - Swift 版支持 `type=0/1/4`（XML/JSON/Remote）。
-   - Swift 版暂不支持 `type=3 (JAR/Spider)` 动态脚本源。
+   - `type=4` 现在包含 `play=<剧集标识>&flag=<线路>` 的 Remote playerContent 请求，只有解析响应返回直接 HTTP(S) 媒体 URL 后才启动播放器；快速切集会取消旧请求。
+   - XML 列表兼容普通文本/CDATA、非纯数字 ID 与常见 XML 实体；播放清单保留 URL 中的 `$`，空线路名不再导致线路错位。
+   - Swift 版仍不支持 `type=3 (JAR/Spider)`，也不执行 `csp_` Java 类、QuickJS/Python 插件、Android API 或本地 Spider 代理。这不是完整 TVBox 兼容实现。
 2. **配置兼容能力不同**
    - 安卓版支持加密配置解密、`clan://`、相对路径修复、独立直播配置加载等。
    - Swift 版当前为常规 URL 拉取 + 注释容错解析。
 3. **解析链路能力不同**
    - 安卓版支持嗅探/解析切换、规则引擎与相关过滤策略。
-   - Swift 版当前仅解析并展示解析器配置数量，未接入完整播放解析链路。
+   - Swift 版的 `parses` 仍仅加载配置，不执行通用 JSON 解析器、WebView 嗅探或解密规则。Remote 响应要求 `parse/jx` 解析器、返回非 HTTP(S) 标识或带非空 `header` 时，会显示明确错误，避免把不完整结果当作可播放地址。
+   - `AVPlayer` / `VLCKit` 是媒体播放引擎，不等同于 Spider 执行器；是否能播放仍取决于实际媒体、编码、鉴权和网络。
 4. **播放器能力不同**
    - 安卓版支持系统/IJK/EXO/外部播放器等多模式。
    - Swift 版当前支持系统 `AVPlayer` 与 `VLCKit`（iOS/macOS）双引擎切换，IJK/EXO/外部播放器仍未接入。
@@ -96,6 +99,12 @@ xcodegen generate
 打开刚刚使用 XcodeGen 生成的 `tvbox.xcodeproj`：
 - 选择合适的 Scheme (`tvbox` 对应 iOS, `tvbox-macOS` 对应 macOS)。
 - 直接在设备或模拟器真机上 `Command + R` 进行编译与运行调试。
+
+### 源与播放验证
+
+GitHub Actions 的 iOS 工作流运行源解析回归测试，再构建 unsigned Release 应用。测试覆盖 XML/JSON/Remote 详情、多线路清单、Remote playerContent 响应与错误边界，并包含公开 HLS 测试流的 AVPlayer 时间线推进冒烟测试。该网络测试依赖外部流可访问；测试失败不能视为播放成功。模拟器 AVPlayer 的时间线证据也不等于 iPhone 真机画面/声音、所有第三方源或 DRM 内容均已验收。
+
+参考协议：[TVBoxOS 配置类型](https://github.com/q215613905/TVBoxOS/blob/main/README.md)、[Remote 播放请求实现](https://github.com/q215613905/TVBoxOS/blob/main/app/src/main/java/com/github/tvbox/osc/viewmodel/SourceViewModel.java)、[CatVodSpider 运行时与示例](https://github.com/FongMi/CatVodSpider)。
 
 ---
 
